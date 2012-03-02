@@ -1,0 +1,103 @@
+#!/usr/bin/env ruby
+# Copyright (c) 2012 Jakub Pastuszek
+#
+# This file is part of Distributed Monitoring System.
+#
+# Distributed Monitoring System is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Distributed Monitoring System is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Distributed Monitoring System.  If not, see <http://www.gnu.org/licenses/>.
+
+$LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
+
+require 'cli'
+require 'dms-console-connector'
+
+VERSION = (Pathname.new(__FILE__).dirname + '../VERSION').read
+
+settings = CLI.new do
+	description "DMS console messaging hub"
+	version VERSION
+	switch :debug,
+		short: :d,
+		description: 'enable debugging'
+	option :external_sub_bind_address,
+		short: :e, 
+		description: 'ZeroMQ bind adderss for data-processor connections - subscriber', 
+		default: 'tcp://127.0.0.1:12000'
+	option :external_pub_bind_address,
+		short: :E, 
+		description: 'ZeroMQ bind adderss for data-processor connections - publisher', 
+		default: 'tcp://127.0.0.1:12001'
+	option :internal_sub_bind_address,
+		short: :i, 
+		description: 'ZeroMQ bind adderss for internal console components connections - subscriber', 
+		default: 'ipc:///tmp/dms-console-connector-sub'
+	option :internal_pub_bind_address,
+		short: :I, 
+		description: 'ZeroMQ bind adderss for internal console components connections - publisher', 
+		default: 'ipc:///tmp/dms-console-connector-pub'
+	option :message_queue,
+		cast: Integer,
+		description: 'queue up to specified number messages',
+		default: '2000'
+	option :linger_time,
+		short: :L,
+		cast: Integer,
+		description: 'how many seconds to wait for outstanding messages to be sent before exiting',
+		default: 10
+end.parse!
+
+Logging.logger.root.level = :debug if settings.debug
+
+logging_class_name 'DMSConsoleConnector'
+log.info "Starting DMS Console Connector version #{VERSION} (LibZMQ version #{ZeroMQ.lib_version}, ffi-ruby version #{ZeroMQ.binding_version}); pid #{Process.pid}"
+
+ZeroMQ.new do |zmq|
+	begin
+		poller = ZeroMQ::Poller.new
+		zmq.sub_bind(settings.internal_sub_bind_address) do |internal_sub|
+			zmq.pub_bind(settings.internal_pub_bind_address, hwm: settings.message_queue, linger: settings.linger_time) do |internal_pub|
+				zmq.sub_bind(settings.external_sub_bind_address) do |external_sub|
+					zmq.pub_bind(settings.external_pub_bind_address, hwm: settings.message_queue, linger: settings.linger_time) do |external_pub|
+						poller.register(internal_sub)
+						poller.register(external_sub)
+
+						log.info "DMS Console Connector ready"
+						loop do
+							poller.poll do |readers, writters|
+								readers.each do |reader|
+									case reader
+									when internal_sub
+										external_pub.send_raw internal_sub.recv_raw
+									when external_sub
+										internal_pub.send_raw external_sub.recv_raw
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	rescue Interrupt
+		log.info "interrupted"
+	rescue SystemExit
+	rescue => error
+		log.fatal 'got error', error
+	ensure
+		log.info "shutting down..."
+	end
+	log.info "waiting for messages to be sent..."
+end
+
+log.info "DMS Console Connector done"
+
