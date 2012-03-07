@@ -69,44 +69,47 @@ end.parse!
 
 id = "#{Facter.fqdn}:#{Process.pid}"
 
-ZeroMQ.new do |zmq|
-	poller = ZeroMQ::Poller.new
-	log.info "subscribing to console publisher address: #{settings.console_connector_pub_address}"
-	zmq.sub_connect(settings.console_connector_pub_address) do |query_sub|
-		log.info "publishing to console subscriber address: #{settings.console_connector_sub_address}"
-		zmq.pub_connect(settings.console_connector_sub_address, hwm: 10, linger: 0) do |query_pub|
-			poller << query_sub
+begin
+	ZeroMQ.new do |zmq|
+		poller = ZeroMQ::Poller.new
+		log.info "subscribing to console publisher address: #{settings.console_connector_pub_address}"
+		zmq.sub_connect(settings.console_connector_pub_address) do |query_sub|
+			log.info "publishing to console subscriber address: #{settings.console_connector_sub_address}"
+			zmq.pub_connect(settings.console_connector_sub_address, hwm: 10, linger: 0) do |query_pub|
+				poller << query_sub
 
-			got_hello = nil
-			query_sub.on Hello, id do |hello|
-				got_hello = true
-				log.info "got: #{hello}"
-			end
-			
-			log.info "wiating #{settings.hello_wait} seconds for Hello message..."
-			hello_times = settings.hello_wait / 0.1
-			until got_hello
-				query_pub.send Discover.new, topic: id
-				if hello_times <= 0
-					log.error "did not receive Hello from any process, exiting"
-					exit 1
+				got_hello = nil
+				query_sub.on Hello, id do |hello|
+					got_hello = true
+					log.info "got: #{hello}"
 				end
-				hello_times -= 1
-				poller.poll 0.1
+				
+				log.info "wiating #{settings.hello_wait} seconds for Hello message..."
+				hello_times = settings.hello_wait / 0.1
+				until got_hello
+					query_pub.send Discover.new, topic: id
+					if hello_times <= 0
+						log.error "did not receive Hello from any process, exiting"
+						exit 1
+					end
+					hello_times -= 1
+					poller.poll 0.1
+				end
+
+				query_sub.on DataSet, id do |data_set|
+					log.info "#{data_set}"
+				end
+
+				query = DataSetQuery.new(settings.tag_expression.join(', '), settings.time_from, settings.time_span, settings.granularity)
+				log.info "sending query: #{query}"
+
+				query_pub.send query, topic: id
+
+				log.info "waiting #{settings.response_wait} seconds for responses..."
+				poller.poll! settings.response_wait
 			end
-
-			query_sub.on DataSet, id do |data_set|
-				log.info "#{data_set}"
-			end
-
-			query = DataSetQuery.new(settings.tag_expression.join(', '), settings.time_from, settings.time_span, settings.granularity)
-			log.info "sending query: #{query}"
-
-			query_pub.send query, topic: id
-
-			log.info "waiting #{settings.response_wait} seconds for responses..."
-			poller.poll! settings.response_wait
 		end
 	end
+rescue Interrupt
 end
 
