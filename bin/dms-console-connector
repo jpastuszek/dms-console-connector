@@ -64,26 +64,29 @@ log.info "Starting DMS Console Connector version #{VERSION} (LibZMQ version #{Ze
 ZeroMQ.new do |zmq|
 	begin
 		poller = ZeroMQ::Poller.new
+		log.info "listening on internal subscriber address: #{settings.internal_sub_bind_address}"
 		zmq.sub_bind(settings.internal_sub_bind_address) do |internal_sub|
+			log.info "listening on internal publisher address: #{settings.internal_pub_bind_address}"
 			zmq.pub_bind(settings.internal_pub_bind_address, hwm: settings.message_queue, linger: settings.linger_time) do |internal_pub|
+				log.info "listening on extrernal subscriber address: #{settings.external_sub_bind_address}"
 				zmq.sub_bind(settings.external_sub_bind_address) do |external_sub|
+					log.info "listening on extrernal publisher address: #{settings.external_pub_bind_address}"
 					zmq.pub_bind(settings.external_pub_bind_address, hwm: settings.message_queue, linger: settings.linger_time) do |external_pub|
-						poller.register(internal_sub)
-						poller.register(external_sub)
+						internal_sub.on_raw do |message|
+							log.debug{ ">> #{message[/.*(?=\n)/]}" }
+							external_pub.send_raw message
+						end
+
+						external_sub.on_raw do |message|
+							log.debug{ "<< #{message[/.*(?=\n)/]}" }
+							internal_pub.send_raw message
+						end
+
+						poller << internal_sub
+						poller << external_sub
 
 						log.info "DMS Console Connector ready"
-						loop do
-							poller.poll do |readers, writters|
-								readers.each do |reader|
-									case reader
-									when internal_sub
-										external_pub.send_raw internal_sub.recv_raw
-									when external_sub
-										internal_pub.send_raw external_sub.recv_raw
-									end
-								end
-							end
-						end
+						poller.poll!
 					end
 				end
 			end
