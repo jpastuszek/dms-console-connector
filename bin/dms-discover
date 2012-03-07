@@ -1,0 +1,94 @@
+#!/usr/bin/env ruby
+# Copyright (c) 2012 Jakub Pastuszek
+#
+# This file is part of Distributed Monitoring System.
+#
+# Distributed Monitoring System is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Distributed Monitoring System is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Distributed Monitoring System.  If not, see <http://www.gnu.org/licenses/>.
+
+$LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
+
+require 'cli'
+require 'pathname'
+require 'dms-core'
+require 'facter'
+
+VERSION = (Pathname.new(__FILE__).dirname + '../VERSION').read
+
+settings = CLI.new do
+	description "DMS network discovery tool"
+	version VERSION
+	switch :debug,
+		short: :d,
+		description: 'enable debugging'
+	option :console_connector_sub_address,
+		short: :e, 
+		description: 'ZeroMQ adderss of console connector - subscriber', 
+		default: 'ipc:///tmp/dms-console-connector-sub'
+	option :console_connector_pub_address,
+		short: :E, 
+		description: 'ZeroMQ adderss of console connector - publisher', 
+		default: 'ipc:///tmp/dms-console-connector-pub'
+	option :hello_wait,
+		short: :w,
+		cast: Float,
+		description: 'wait given number of seconds for Hello message',
+		default: 4
+	argument :host_name,
+		description: 'host FQDN or /regexp/',
+		default: ''
+	argument :program,
+		description: 'name of program to match',
+		default: ''
+end.parse!
+
+id = "#{Facter.fqdn}:#{Process.pid}"
+
+begin
+	ZeroMQ.new do |zmq|
+		poller = ZeroMQ::Poller.new
+		log.info "subscribing to console publisher address: #{settings.console_connector_pub_address}"
+		zmq.sub_connect(settings.console_connector_pub_address) do |query_sub|
+			log.info "publishing to console subscriber address: #{settings.console_connector_sub_address}"
+			zmq.pub_connect(settings.console_connector_sub_address, hwm: 10, linger: 0) do |query_pub|
+				poller << query_sub
+
+				got_hello = nil
+				query_sub.on Hello, id do |hello|
+					got_hello = true
+					log.info "got: #{hello}"
+				end
+
+				discover = Discover.new(settings.host_name, settings.program)
+
+				log.info "sending #{discover} messages"
+				log.info "wiating #{settings.hello_wait} seconds for Hello messages..."
+
+				time_left = settings.hello_wait
+				until got_hello
+					query_pub.send discover, topic: id
+					if time_left <= 0
+						log.error "did not receive Hello from any process, exiting"
+						exit 1
+					end
+					poller.poll 0.1
+					time_left -= 0.1
+				end
+
+				poller.poll! time_left
+			end
+		end
+	end
+rescue Interrupt
+end
+
