@@ -64,7 +64,7 @@ Program::Tool.new('DMS Query', VERSION) do
 			log.debug "internal console subscriber: #{settings.internal_console_subscriber}, publisher: #{settings.internal_console_publisher}"
 			zmq.bus_connect(settings.internal_console_publisher, settings.internal_console_subscriber, {hwm: 10, linger: 0}) do |bus|
 				log.debug "wiating #{settings.hello_wait} seconds for Hello message..."
-				BusDetector.new('query', bus, poller).discover(settings.hello_wait)
+				BusDetector.new(id, bus, poller).discover(settings.hello_wait)
 
 				poller << bus
 				bus.on DataSet, id do |data_set|
