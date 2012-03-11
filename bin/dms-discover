@@ -18,65 +18,52 @@
 
 $LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
 
-require 'cli'
 require 'pathname'
-require 'dms-core'
 require 'facter'
+require 'dms-core'
 
 VERSION = (Pathname.new(__FILE__).dirname + '../VERSION').read
 
-settings = CLI.new do
-	description "DMS network discovery tool"
-	version VERSION
-	switch :debug,
-		short: :d,
-		description: 'enable debugging'
-	option :console_connector_sub_address,
-		short: :e, 
-		description: 'ZeroMQ adderss of console connector - subscriber', 
-		default: 'ipc:///tmp/dms-console-connector-sub'
-	option :console_connector_pub_address,
-		short: :E, 
-		description: 'ZeroMQ adderss of console connector - publisher', 
-		default: 'ipc:///tmp/dms-console-connector-pub'
-	option :hello_wait,
-		short: :w,
-		cast: Float,
-		description: 'wait given number of seconds for Hello message',
-		default: 4
-	argument :host_name,
-		description: 'host FQDN or /regexp/',
-		default: ''
-	argument :program,
-		description: 'name of program to match',
-		default: ''
-end.parse!
+Program::Tool.new('DMS Discover', VERSION) do
+	cli do
+		description "DMS network discovery tool"
 
-id = "#{Facter.fqdn}:#{Process.pid}"
+		internal_console_connection
+		option :hello_wait,
+			short: :w,
+			cast: Float,
+			description: 'wait given number of seconds for Hello message',
+			default: 4
+		argument :host_name,
+			description: 'host FQDN or /regexp/',
+			default: ''
+		argument :program,
+			description: 'name of program to match',
+			default: ''
+	end
 
-begin
-	ZeroMQ.new do |zmq|
-		poller = ZeroMQ::Poller.new
-		log.info "subscribing to console publisher address: #{settings.console_connector_pub_address}"
-		zmq.sub_connect(settings.console_connector_pub_address) do |query_sub|
-			log.info "publishing to console subscriber address: #{settings.console_connector_sub_address}"
-			zmq.pub_connect(settings.console_connector_sub_address, hwm: 10, linger: 0) do |query_pub|
-				poller << query_sub
+	main do |settings|
+		id = "#{Facter.fqdn}:#{Process.pid}"
+		ZeroMQ.new do |zmq|
+			poller = ZeroMQ::Poller.new
+			log.debug "internal console subscriber: #{settings.internal_console_subscriber}, publisher: #{settings.internal_console_publisher}"
+			zmq.bus_connect(settings.internal_console_publisher, settings.internal_console_subscriber, {hwm: 10, linger: 0}) do |bus|
+				poller << bus
 
 				got_hello = nil
-				query_sub.on Hello, id do |hello|
+				bus.on Hello, id do |hello|
 					got_hello = true
 					log.info "got: #{hello}"
 				end
 
 				discover = Discover.new(settings.host_name, settings.program)
 
-				log.info "sending #{discover} messages"
-				log.info "wiating #{settings.hello_wait} seconds for Hello messages..."
+				log.info "emiting: #{discover}"
+				log.debug "wiating #{settings.hello_wait} seconds for Hello messages..."
 
 				time_left = settings.hello_wait
 				until got_hello
-					query_pub.send discover, topic: id
+					bus.send discover, topic: id
 					if time_left <= 0
 						log.error "did not receive Hello from any process, exiting"
 						exit 1
@@ -89,6 +76,5 @@ begin
 			end
 		end
 	end
-rescue Interrupt
 end
 

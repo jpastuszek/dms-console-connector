@@ -18,89 +18,69 @@
 
 $LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
 
-require 'cli'
+require 'pathname'
 require 'dms-console-connector'
 
 VERSION = (Pathname.new(__FILE__).dirname + '../VERSION').read
 
-settings = CLI.new do
-	description "DMS console messaging hub"
-	version VERSION
-	switch :debug,
-		short: :d,
-		description: 'enable debugging'
-	option :external_sub_bind_address,
-		short: :e, 
-		description: 'ZeroMQ bind adderss for data-processor connections - subscriber', 
-		default: 'tcp://127.0.0.1:12000'
-	option :external_pub_bind_address,
-		short: :E, 
-		description: 'ZeroMQ bind adderss for data-processor connections - publisher', 
-		default: 'tcp://127.0.0.1:12001'
-	option :internal_sub_bind_address,
-		short: :i, 
-		description: 'ZeroMQ bind adderss for internal console components connections - subscriber', 
-		default: 'ipc:///tmp/dms-console-connector-sub'
-	option :internal_pub_bind_address,
-		short: :I, 
-		description: 'ZeroMQ bind adderss for internal console components connections - publisher', 
-		default: 'ipc:///tmp/dms-console-connector-pub'
-	option :message_queue,
-		cast: Integer,
-		description: 'queue up to specified number messages',
-		default: '2000'
-	option :linger_time,
-		short: :L,
-		cast: Integer,
-		description: 'how many seconds to wait for outstanding messages to be sent before exiting',
-		default: 10
-end.parse!
+Program::Daemon.new('DMS Console Connector', VERSION) do
+	cli do
+		description "DMS console messaging hub"
 
-Logging.logger.root.level = :debug if settings.debug
+		option :external_sub_bind_address,
+			short: :c, 
+			description: 'ZeroMQ bind adderss for data-processor connections - subscriber', 
+			default: 'tcp://127.0.0.1:12000'
+		option :external_pub_bind_address,
+			short: :C, 
+			description: 'ZeroMQ bind adderss for data-processor connections - publisher', 
+			default: 'tcp://127.0.0.1:12001'
+		option :internal_sub_bind_address,
+			short: :i, 
+			description: 'ZeroMQ bind adderss for internal console components connections - subscriber', 
+			default: 'ipc:///tmp/dms-console-connector-sub'
+		option :internal_pub_bind_address,
+			short: :I, 
+			description: 'ZeroMQ bind adderss for internal console components connections - publisher', 
+			default: 'ipc:///tmp/dms-console-connector-pub'
+		option :message_queue,
+			cast: Integer,
+			description: 'queue up to specified number messages',
+			default: '2000'
+		option :linger_time,
+			short: :L,
+			cast: Integer,
+			description: 'how many seconds to wait for outstanding messages to be sent before exiting',
+			default: 10
+	end
 
-logging_class_name 'DMSConsoleConnector'
-log.info "Starting DMS Console Connector version #{VERSION} (LibZMQ version #{ZeroMQ.lib_version}, ffi-ruby version #{ZeroMQ.binding_version}); pid #{Process.pid}"
+	main do |settings|
+		ZeroMQ.new do |zmq|
+			poller = ZeroMQ::Poller.new
+			log.debug "listening on internal console subscriber: #{settings.internal_sub_bind_address}, publisher: #{settings.internal_pub_bind_address}"
+			zmq.bus_bind(settings.internal_pub_bind_address, settings.internal_sub_bind_address, {hwm: settings.message_queue, linger: settings.linger_time}) do |internal_bus|
 
-ZeroMQ.new do |zmq|
-	begin
-		poller = ZeroMQ::Poller.new
-		log.info "listening on internal subscriber address: #{settings.internal_sub_bind_address}"
-		zmq.sub_bind(settings.internal_sub_bind_address) do |internal_sub|
-			log.info "listening on internal publisher address: #{settings.internal_pub_bind_address}"
-			zmq.pub_bind(settings.internal_pub_bind_address, hwm: settings.message_queue, linger: settings.linger_time) do |internal_pub|
-				log.info "listening on extrernal subscriber address: #{settings.external_sub_bind_address}"
-				zmq.sub_bind(settings.external_sub_bind_address) do |external_sub|
-					log.info "listening on extrernal publisher address: #{settings.external_pub_bind_address}"
-					zmq.pub_bind(settings.external_pub_bind_address, hwm: settings.message_queue, linger: settings.linger_time) do |external_pub|
-						internal_sub.on_raw do |message|
-							log.debug{ ">> #{message[/.*(?=\n)/]}" }
-							external_pub.send_raw message
-						end
+				log.debug "listening on extrernal console subscriber: #{settings.external_sub_bind_address}, publisher: #{settings.external_pub_bind_address}"
+				zmq.bus_bind(settings.external_pub_bind_address, settings.external_sub_bind_address, {hwm: settings.message_queue, linger: settings.linger_time}) do |external_bus|
+					internal_bus.on_raw do |message|
+						log.debug{ ">> #{message[/.*(?=\n)/]}" }
+						external_bus.send_raw message
+					end
 
-						external_sub.on_raw do |message|
-							log.debug{ "<< #{message[/.*(?=\n)/]}" }
-							internal_pub.send_raw message
-						end
+					external_bus.on_raw do |message|
+						log.debug{ "<< #{message[/.*(?=\n)/]}" }
+						internal_bus.send_raw message
+					end
 
-						poller << internal_sub
-						poller << external_sub
+					poller << internal_bus
+					poller << external_bus
 
-						log.info "DMS Console Connector ready"
+					main_loop do
 						poller.poll!
 					end
 				end
 			end
 		end
-	rescue Interrupt
-		log.info "interrupted"
-	rescue SystemExit
-	rescue => error
-		log.fatal 'got error', error
-	ensure
-		log.info "shutting down..."
 	end
-	log.info "waiting for messages to be sent..."
 end
-
-log.info "DMS Console Connector done"
 
