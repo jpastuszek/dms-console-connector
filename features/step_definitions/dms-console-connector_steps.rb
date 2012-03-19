@@ -88,3 +88,40 @@ Then /^I should eventually receive it on internal publisher address$/ do
 	message.program.should == @message.program
 end
 
+When /^I keep publishing test message to internal subscriber address$/ do
+	@message = Discover.new('xyz', 'abc')
+	@publisher_thread = Thread.new do
+		ZeroMQ.new do |zmq|
+			zmq.pub_connect(@internal_sub_address, linger: 0) do |pub|
+				loop do
+					pub.send @message
+					sleep 0.2
+				end
+			end
+		end
+	end
+end
+
+Then /^I should eventually receive it on external publisher address$/ do
+	message = nil
+	Timeout.timeout 4 do
+		ZeroMQ.new do |zmq|
+			zmq.sub_connect(@external_pub_address) do |sub|
+				sub.on Discover do |msg|
+					message = msg
+				end.receive!
+			end
+		end
+	end
+
+	@publisher_thread.kill
+	@publisher_thread.join
+
+	message.host_name.should == @message.host_name
+	message.program.should == @message.program
+end
+
+Then /terminate the process/ do
+	terminate(@program_pid, @program_thread)
+end
+

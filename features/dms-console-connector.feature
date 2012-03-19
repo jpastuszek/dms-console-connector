@@ -5,14 +5,21 @@ Feature: Console connector passing messages
 	Background:
 		Given dms-console-connector program
 		And debug enabled
-		And use linger time of 0
-
-	Scenario: Passing messages from external to internal network
 		Given external subscriber address is ipc:///tmp/dms-console-connector-ext-sub-test
 		And external publisher address is ipc:///tmp/dms-console-connector-ext-pub-test
 		Given internal subscriber address is ipc:///tmp/dms-console-connector-int-sub-test
 		And internal publisher address is ipc:///tmp/dms-console-connector-int-pub-test
-		And it is started
+		And use linger time of 0
+
+	Scenario: Passing messages from external to internal network
+		Given it is started
 		When I keep publishing test message to external subscriber address
 		Then I should eventually receive it on internal publisher address
+		And terminate the process
+
+	Scenario: Passing messages from internal to external network
+		Given it is started
+		When I keep publishing test message to internal subscriber address
+		Then I should eventually receive it on external publisher address
+		And terminate the process
 
