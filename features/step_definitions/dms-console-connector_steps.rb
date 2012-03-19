@@ -15,3 +15,76 @@
 # You should have received a copy of the GNU General Public License
 # along with Distributed Monitoring System.  If not, see <http://www.gnu.org/licenses/>.
 
+Given /(.+) program$/ do |program|
+	@program = program
+	@program_args = []
+end
+
+Given /debug enabled/ do
+	@program_args << ['--debug']
+end
+
+Given /use linger time of (.+)/ do |linger_time|
+	@program_args << ['--linger-time', linger_time.to_i]
+end
+
+When /it is started$/ do
+	@program_args = @program_args.join(' ')
+
+	puts "#{@program} #{@program_args}"
+	@program_pid, @program_thread, @program_out_queue = spawn(@program, @program_args)
+end
+
+Given /^external subscriber address is (.*)$/ do |address|
+	@external_sub_address = address
+	@program_args << ['--external-sub-bind-address', address]
+end
+
+Given /^external publisher address is (.*)$/ do |address|
+	@external_pub_address = address
+	@program_args << ['--external-pub-bind-address', address]
+end
+
+Given /^internal subscriber address is (.*)$/ do |address|
+	@internal_sub_address = address
+	@program_args << ['--internal-sub-bind-address', address]
+end
+
+Given /^internal publisher address is (.*)$/ do |address|
+	@internal_pub_address = address
+	@program_args << ['--internal-pub-bind-address', address]
+end
+
+When /^I keep publishing test message to external subscriber address$/ do
+	@message = Discover.new('abc', 'xyz')
+	@publisher_thread = Thread.new do
+		ZeroMQ.new do |zmq|
+			zmq.pub_connect(@external_sub_address, linger: 0) do |pub|
+				loop do
+					pub.send @message
+					sleep 0.2
+				end
+			end
+		end
+	end
+end
+
+Then /^I should eventually receive it on internal publisher address$/ do
+	message = nil
+	Timeout.timeout 4 do
+		ZeroMQ.new do |zmq|
+			zmq.sub_connect(@internal_pub_address) do |sub|
+				sub.on Discover do |msg|
+					message = msg
+				end.receive!
+			end
+		end
+	end
+
+	@publisher_thread.kill
+	@publisher_thread.join
+
+	message.host_name.should == @message.host_name
+	message.program.should == @message.program
+end
+
