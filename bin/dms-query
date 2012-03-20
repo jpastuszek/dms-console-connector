@@ -19,7 +19,6 @@
 $LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
 
 require 'pathname'
-require 'facter'
 require 'dms-core'
 
 VERSION = (Pathname.new(__FILE__).dirname + '../VERSION').read
@@ -58,23 +57,22 @@ Program::Tool.new('DMS Query', VERSION) do
 	end
 
 	main do |settings|
-		id = "#{Facter.fqdn}:#{Process.pid}"
 		ZeroMQ.new do |zmq|
 			poller = ZeroMQ::Poller.new
 			log.debug "internal console subscriber: #{settings.internal_console_subscriber}, publisher: #{settings.internal_console_publisher}"
 			zmq.bus_connect(settings.internal_console_publisher, settings.internal_console_subscriber, {hwm: 10, linger: 0}) do |bus|
 				log.debug "wiating #{settings.hello_wait} seconds for Hello message..."
-				BusDetector.new(id, bus, poller).discover(settings.hello_wait)
+				BusDetector.new(settings.program_id, bus, poller).discover(settings.hello_wait)
 
 				poller << bus
-				bus.on DataSet, id do |data_set|
+				bus.on DataSet, settings.program_id do |data_set|
 					log.info "#{data_set}"
 				end
 
 				query = DataSetQuery.new(settings.tag_expression.join(', '), settings.time_from, settings.time_span, settings.granularity)
 				log.info "sending query: #{query}"
 
-				bus.send query, topic: id
+				bus.send query, topic: settings.program_id
 
 				log.debug "waiting #{settings.response_wait} seconds for responses..."
 				poller.poll! settings.response_wait
