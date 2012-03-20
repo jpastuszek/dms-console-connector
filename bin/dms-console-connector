@@ -47,11 +47,7 @@ Program::Daemon.new('DMS Console Connector', VERSION) do
 			cast: Integer,
 			description: 'queue up to specified number messages',
 			default: '2000'
-		option :linger_time,
-			short: :L,
-			cast: Integer,
-			description: 'how many seconds to wait for outstanding messages to be sent before exiting',
-			default: 10
+		linger_time
 	end
 
 	main do |settings|
