@@ -34,6 +34,9 @@ Program::Tool.new('DMS Query', VERSION) do
 			cast: Float,
 			description: 'wait given number of seconds for responses',
 			default: 4
+		switch :show_data_points,
+			short: :s,
+			description: 'print data received data points'
 		option :time_from,
 			short: :f,
 			cast: lambda{|s| Time.parse(s + ' UTC')},
@@ -63,6 +66,13 @@ Program::Tool.new('DMS Query', VERSION) do
 				poller << bus
 				bus.on DataSet, settings.program_id do |data_set|
 					log.info "#{data_set}"
+					if settings.show_data_points
+						data_set.component_data.each_pair do |component, data|
+							data.each do |time, value|
+								log.info "#{data_set.type_name}/#{component} - #{time}: #{value}"
+							end
+						end
+					end
 				end
 
 				query = DataSetQuery.new(settings.tag_expression.join(', '), settings.time_from, settings.time_span, settings.granularity)
