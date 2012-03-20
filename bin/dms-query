@@ -28,11 +28,7 @@ Program::Tool.new('DMS Query', VERSION) do
 		description "DMS data processor query tool"
 
 		internal_console_connection
-		option :hello_wait,
-			short: :w,
-			cast: Float,
-			description: 'wait given number of seconds for Hello message',
-			default: 4
+		hello_wait
 		option :response_wait,
 			short: :W,
 			cast: Float,
