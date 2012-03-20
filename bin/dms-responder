@@ -33,7 +33,7 @@ Program::Tool.new('DMS Responder', VERSION) do
 	main do |settings|
 		ZeroMQ.new do |zmq|
 			log.debug "console subscriber: #{settings.console_subscriber}, publisher: #{settings.console_publisher}"
-			zmq.bus_connect(settings.console_publisher, settings.console_subscriber, {linger: 0}) do |bus|
+			zmq.bus_connect(settings.console_publisher, settings.console_subscriber, {hwm: 10, linger: 0}) do |bus|
 				log.info "responding for host name '#{settings.host_name}' program '#{settings.program}' pid: #{settings.pid}"
 				bus.responder(settings.host_name, settings.program, settings.pid)
 				loop do
