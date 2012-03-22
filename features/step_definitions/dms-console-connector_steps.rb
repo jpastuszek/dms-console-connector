@@ -32,7 +32,7 @@ When /it is started$/ do
 	@program_args = @program_args.join(' ')
 
 	puts "#{@program} #{@program_args}"
-	@program_pid, @program_thread, @program_out_queue = spawn(@program, @program_args)
+	@program_process = RunProgram.new(@program, @program_args){|line| puts line}
 end
 
 Given /^external subscriber address is (.*)$/ do |address|
@@ -122,6 +122,6 @@ Then /^I should eventually receive it on external publisher address$/ do
 end
 
 Then /terminate the process/ do
-	terminate(@program_pid, @program_thread)
+	@program_process.terminate
 end
 
