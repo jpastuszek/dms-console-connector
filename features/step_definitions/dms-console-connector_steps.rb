@@ -32,7 +32,7 @@ When /it is started$/ do
 	@program_args = @program_args.join(' ')
 
 	puts "#{@program} #{@program_args}"
-	@program_process = RunProgram.new(@program, @program_args){|line| puts line}
+	@program_process = RunProgram.new(@program, @program_args)#{|line| puts line}
 end
 
 Given /^external subscriber address is (.*)$/ do |address|
