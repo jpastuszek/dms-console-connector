@@ -15,26 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with Distributed Monitoring System.  If not, see <http://www.gnu.org/licenses/>.
 
-Given /(.+) program$/ do |program|
-	@program = program
-	@program_args = []
-end
-
-Given /debug enabled/ do
-	@program_args << ['--debug']
-end
-
-Given /use linger time of (.+)/ do |linger_time|
-	@program_args << ['--linger-time', linger_time.to_i]
-end
-
-When /it is started$/ do
-	@program_args = @program_args.join(' ')
-
-	puts "#{@program} #{@program_args}"
-	@program_process = RunProgram.new(@program, @program_args)#{|line| puts line}
-end
-
 Given /^external subscriber address is (.*)$/ do |address|
 	@external_sub_address = address
 	@program_args << ['--external-sub-bind-address', address]
@@ -119,9 +99,5 @@ Then /^I should eventually receive it on external publisher address$/ do
 
 	message.host_name.should == @message.host_name
 	message.program.should == @message.program
-end
-
-Then /terminate the process/ do
-	@program_process.terminate
 end
 
