@@ -15,24 +15,24 @@
 # You should have received a copy of the GNU General Public License
 # along with Distributed Monitoring System.  If not, see <http://www.gnu.org/licenses/>.
 
-Given /^external subscriber address is (.*)$/ do |address|
+Given /([^ ]*) external subscriber address is (.*)/ do |program, address|
 	@external_sub_address = address
-	@program_args << ['--external-sub-bind-address', address]
+	step "#{program} argument --external-sub-bind-address #{address}"
 end
 
-Given /^external publisher address is (.*)$/ do |address|
+Given /([^ ]*) external publisher address is (.*)/ do |program, address|
 	@external_pub_address = address
-	@program_args << ['--external-pub-bind-address', address]
+	step "#{program} argument --external-pub-bind-address #{address}"
 end
 
-Given /^internal subscriber address is (.*)$/ do |address|
+Given /([^ ]*) internal subscriber address is (.*)/ do |program, address|
 	@internal_sub_address = address
-	@program_args << ['--internal-sub-bind-address', address]
+	step "#{program} argument --internal-sub-bind-address #{address}"
 end
 
-Given /^internal publisher address is (.*)$/ do |address|
+Given /([^ ]*) internal publisher address is (.*)/ do |program, address|
 	@internal_pub_address = address
-	@program_args << ['--internal-pub-bind-address', address]
+	step "#{program} argument --internal-pub-bind-address #{address}"
 end
 
 When /^I keep publishing test message to external subscriber address$/ do
