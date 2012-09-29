@@ -54,12 +54,12 @@ Program::Daemon.new('DMS Console Connector', VERSION) do
 
 				log.debug "listening on extrernal console subscriber: #{settings.external_sub_bind_address}, publisher: #{settings.external_pub_bind_address}"
 				zmq.bus_bind(settings.external_pub_bind_address, settings.external_sub_bind_address, {linger: settings.linger_time}) do |external_bus|
-					internal_bus.on_raw do |message|
+					internal_bus.on :raw do |message|
 						log.debug{ ">> #{message[/.*(?=\n)/]}" }
 						external_bus.send_raw message
 					end
 
-					external_bus.on_raw do |message|
+					external_bus.on :raw do |message|
 						log.debug{ "<< #{message[/.*(?=\n)/]}" }
 						internal_bus.send_raw message
 					end
