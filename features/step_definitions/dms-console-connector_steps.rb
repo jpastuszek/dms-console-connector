@@ -56,7 +56,8 @@ Then /^I should eventually receive it on internal publisher address$/ do
 			zmq.sub_connect(@internal_pub_address) do |sub|
 				sub.on Discover do |msg|
 					message = msg
-				end.receive!
+				end
+				sub.receive!
 			end
 		end
 	end
@@ -89,7 +90,8 @@ Then /^I should eventually receive it on external publisher address$/ do
 			zmq.sub_connect(@external_pub_address) do |sub|
 				sub.on Discover do |msg|
 					message = msg
-				end.receive!
+				end
+				sub.receive!
 			end
 		end
 	end

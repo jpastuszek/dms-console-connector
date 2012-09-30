@@ -56,12 +56,12 @@ Program::Daemon.new('DMS Console Connector', VERSION) do
 				zmq.bus_bind(settings.external_pub_bind_address, settings.external_sub_bind_address, {linger: settings.linger_time}) do |external_bus|
 					internal_bus.on :raw do |message|
 						log.debug{ ">> #{message[/.*(?=\n)/]}" }
-						external_bus.send_raw message
+						external_bus.send message
 					end
 
 					external_bus.on :raw do |message|
 						log.debug{ "<< #{message[/.*(?=\n)/]}" }
-						internal_bus.send_raw message
+						internal_bus.send message
 					end
 
 					poller << internal_bus
